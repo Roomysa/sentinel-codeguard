@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel CodeGuard — AI Python Bug Finder & Security Checker</title>
+  <style>
+    :root {
+      /* Theme Base Palette */
+      --bg-primary: #0A0A0A;       /* Jet Black */
+      --bg-secondary: #121212;     /* Deep Surface */
+      --bg-tertiary: #1A1A1A;      /* Surface Card */
+      --bg-code: #050505;          /* Code Editor BG */
+      
+      --text-main: #F0F4F8;        /* Bright Readable White/Silver */
+      --text-muted: #8E9BAE;       /* Muted Text */
+      
+      --cerulean: #007BA7;         /* Cerulean Blue */
+      --cerulean-hover: #00668A;
+      --cerulean-light: rgba(0, 123, 167, 0.18);
+      
+      --mocha: #6F4E37;            /* Mocha Brown */
+      --mocha-hover: #5A3E2B;
+      --mocha-light: rgba(111, 78, 55, 0.25);
+      
+      --border-color: #262626;
+      --accent-primary: var(--cerulean);
+      --accent-secondary: var(--mocha);
+      
+      /* Severity & Status Badges */
+      --severity-high: #EF4444;
+      --severity-high-bg: rgba(239, 68, 68, 0.15);
+      --severity-med: #F59E0B;
+      --severity-med-bg: rgba(245, 158, 11, 0.15);
+      --severity-low: #EAB308;
+      --severity-low-bg: rgba(234, 179, 8, 0.15);
+      --status-success: #10B981;
+      --status-success-bg: rgba(16, 185, 129, 0.15);
+      
+      --diff-add: rgba(16, 185, 129, 0.18);
+      --diff-remove: rgba(239, 68, 68, 0.18);
+      --active-line: rgba(0, 123, 167, 0.25);
+      
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: "Fira Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+    }
+
+    /* Light Theme Toggle Overrides */
+    [data-theme="light"] {
+      --bg-primary: #F4F5F7;
+      --bg-secondary: #FFFFFF;
+      --bg-tertiary: #EAECEF;
+      --bg-code: #F8F9FA;
+      
+      --text-main: #0A0A0A;
+      --text-muted: #556070;
+      
+      --border-color: #D0D5DD;
+      
+      --cerulean: #007BA7;
+      --cerulean-hover: #005F82;
+      --cerulean-light: rgba(0, 123, 167, 0.12);
+      
+      --mocha: #6F4E37;
+      --mocha-hover: #543B2A;
+      --mocha-light: rgba(111, 78, 55, 0.15);
+      
+      --active-line: rgba(0, 123, 167, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      transition: background-color 0.25s, color 0.25s;
+    }
+
+    /* Header Navbar */
+    header {
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--mocha);
+      color: #FFFFFF;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-family: var(--font-mono);
+      font-size: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text-main);
+    }
+
+    .brand-tag {
+      font-size: 11px;
+      background-color: var(--cerulean-light);
+      color: var(--cerulean);
+      padding: 2px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--cerulean);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Chat Container */
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      scroll-behavior: smooth;
+    }
+
+    /* Messages Styling */
+    .message {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 100%;
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      width: 100%;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      width: 100%;
+    }
+
+    .message-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .message.assistant .message-header {
+      color: var(--mocha);
+    }
+
+    .message.user .message-header {
+      color: var(--cerulean);
+    }
+
+    .welcome-card {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-left: 4px solid var(--mocha);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .welcome-card p {
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    .welcome-card p:last-of-type {
+      margin-bottom: 16px;
+    }
+
+    /* Buttons */
+    .btn {
+      background-color: var(--bg-tertiary);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover:not(:disabled) {
+      background-color: var(--border-color);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background-color: var(--cerulean);
+      color: #FFFFFF;
+      border: none;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--cerulean-hover);
+    }
+
+    .btn-secondary {
+      background-color: var(--mocha);
+      color: #FFFFFF;
+      border: none;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background-color: var(--mocha-hover);
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    /* Code Display Window & Line Numbers */
+    .code-viewer {
+      background-color: var(--bg-code);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      position: relative;
+    }
+
+    .code-container {
+      display: flex;
+      overflow-x: auto;
+    }
+
+    .line-numbers {
+      background-color: var(--bg-secondary);
+      padding: 12px 8px;
+      text-align: right;
+      color: var(--text-muted);
+      user-select: none;
+      border-right: 1px solid var(--border-color);
+      min-width: 40px;
+      white-space: pre;
+    }
+
+    .code-content {
+      padding: 12px;
+      flex: 1;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .code-line {
+      display: block;
+      padding: 0 4px;
+      border-radius: 2px;
+    }
+
+    .code-line.highlighted {
+      background-color: var(--active-line);
+      outline: 1px solid var(--cerulean);
+    }
+
+    .code-line.diff-add {
+      background-color: var(--diff-add);
+    }
+
+    .code-line.diff-remove {
+      background-color: var(--diff-remove);
+    }
+
+    /* Analysis Results Layout */
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .results-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .results-section {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-main);
+    }
+
+    .card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .issue-card {
+      background-color: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.1s;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .issue-card:hover {
+      border-color: var(--cerulean);
+      transform: translateY(-1px);
+    }
+
+    .issue-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .line-badge {
+      font-family: var(--font-mono);
+      background-color: var(--bg-code);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+    }
+
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .badge-HIGH { background-color: var(--severity-high-bg); color: var(--severity-high); border: 1px solid var(--severity-high); }
+    .badge-MEDIUM { background-color: var(--severity-med-bg); color: var(--severity-med); border: 1px solid var(--severity-med); }
+    .badge-LOW { background-color: var(--severity-low-bg); color: var(--severity-low); border: 1px solid var(--severity-low); }
+
+    .issue-text {
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--text-main);
+    }
+
+    .empty-state {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-style: italic;
+      padding: 8px 0;
+    }
+
+    .error-box {
+      background-color: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--severity-high);
+      color: var(--severity-high);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    /* Verification & Fix View Components */
+    .fix-container {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .fix-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background-color: var(--status-success-bg);
+      color: var(--status-success);
+      border: 1px solid var(--status-success);
+    }
+
+    .verification-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+
+    .v-true {
+      background-color: var(--status-success-bg);
+      color: var(--status-success);
+      border: 1px solid var(--status-success);
+    }
+
+    .v-false {
+      background-color: var(--severity-med-bg);
+      color: var(--severity-med);
+      border: 1px solid var(--severity-med);
+    }
+
+    .v-null {
+      background-color: var(--bg-tertiary);
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+    }
+
+    .side-by-side {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .side-by-side {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .checks-details {
+      background-color: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+    }
+
+    .checks-details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .checks-list {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    /* Fixed Input Bar */
+    .input-panel {
+      background-color: var(--bg-secondary);
+      border-top: 1px solid var(--border-color);
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 10;
+    }
+
+    .input-panel-container {
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .editor-wrapper {
+      display: flex;
+      background-color: var(--bg-code);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+
+    .editor-wrapper:focus-within {
+      border-color: var(--cerulean);
+      box-shadow: 0 0 0 1px var(--cerulean);
+    }
+
+    .editor-line-numbers {
+      background-color: var(--bg-secondary);
+      padding: 10px 8px;
+      text-align: right;
+      color: var(--text-muted);
+      user-select: none;
+      border-right: 1px solid var(--border-color);
+      min-width: 40px;
+      line-height: 1.5;
+    }
+
+    textarea.code-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 10px;
+      resize: vertical;
+      min-height: 110px;
+      outline: none;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .desc-input {
+      flex: 1;
+      background-color: var(--bg-code);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .desc-input:focus {
+      border-color: var(--cerulean);
+    }
+
+    .file-upload-btn {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .file-upload-btn input[type="file"] {
+      position: absolute;
+      top: 0;
+      right: 0;
+      min-width: 100%;
+      min-height: 100%;
+      font-size: 100px;
+      text-align: right;
+      filter: alpha(opacity=0);
+      opacity: 0;
+      outline: none;
+      cursor: pointer;
+      display: block;
+    }
+
+    /* Loading Indicator */
+    .loading-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--cerulean);
+      font-weight: 600;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border-color);
+      border-top-color: var(--cerulean);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+      background-color: var(--bg-secondary);
+      border-top: 1px solid var(--border-color);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">S</div>
+      <div>
+        <span class="brand-title">Sentinel CodeGuard</span>
+        <span class="brand-tag">AI Security</span>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <button class="btn btn-sm" id="newChatBtn" title="Reset Session">New Chat</button>
+      <button class="btn btn-sm" id="themeToggleBtn">Light Theme</button>
+    </div>
+  </header>
+
+  <!-- Main Scrollable Chat Container -->
+  <div class="chat-container" id="chatContainer">
+    <!-- Initial Assistant Welcome Message -->
+    <div class="message assistant" id="welcomeMessage">
+      <div class="message-header">
+        <span>Sentinel Assistant</span>
+      </div>
+      <div class="welcome-card">
+        <p>Welcome! I analyze Python code for security vulnerabilities using Bandit and detect logic bugs with AI.</p>
+        <p>Upload a file or paste your snippet below to generate interactive reviews and automated verified fixes.</p>
+        <button class="btn btn-secondary btn-sm" id="demoBtn">Try a demo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sticky Bottom Controls & Code Input Area -->
+  <div class="input-panel">
+    <div class="input-panel-container">
+      <div class="editor-wrapper">
+        <div class="editor-line-numbers" id="inputLineNumbers">1</div>
+        <textarea 
+          class="code-input" 
+          id="codeInput" 
+          placeholder="# Paste Python code here or upload a .py file..." 
+          spellcheck="false"
+        ></textarea>
+      </div>
+
+      <div class="controls-row">
+        <div class="btn btn-sm file-upload-btn">
+          <span>Upload .py</span>
+          <input type="file" id="fileInput" accept=".py">
+        </div>
+
+        <input 
+          type="text" 
+          class="desc-input" 
+          id="descInput" 
+          placeholder="What should this code do? (optional, e.g. find_max should return largest number)"
+        >
+
+        <button class="btn btn-primary" id="analyzeBtn">
+          <span>Analyze</span>
+          <span style="font-size: 10px; opacity: 0.8;">(Ctrl+Enter)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Footer -->
+  <footer>
+    AI can make mistakes. Review all results.
+  </footer>
+
+  <script>
+    // Config: Enable MOCK mode for standalone UI testing
+    const MOCK = false;
+
+    // Sample Python Code for Demo
+    const DEMO_CODE = `def find_max(numbers):\n    max_num = 0\n    for n in numbers:\n        if n > max_num:\n            max_num = n\n    return max_num\n\nimport subprocess\ndef run_query(user_input):\n    subprocess.Popen("echo " + user_input, shell=True)\n`;
+
+    // Global UI State Variables
+    let currentCode = "";
+    let currentDescription = "";
+    let lastAnalysisResult = null;
+    let isProcessing = false;
+    let lastUserMsgId = 0;
+
+    // DOM References
+    const chatContainer = document.getElementById('chatContainer');
+    const codeInput = document.getElementById('codeInput');
+    const inputLineNumbers = document.getElementById('inputLineNumbers');
+    const descInput = document.getElementById('descInput');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const demoBtn = document.getElementById('demoBtn');
+    const fileInput = document.getElementById('fileInput');
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const newChatBtn = document.getElementById('newChatBtn');
+
+    // Theme Management
+    themeToggleBtn.addEventListener('click', () => {
+      const currentTheme = document.body.getAttribute('data-theme');
+      if (currentTheme === 'light') {
+        document.body.removeAttribute('data-theme');
+        themeToggleBtn.textContent = 'Light Theme';
+      } else {
+        document.body.setAttribute('data-theme', 'light');
+        themeToggleBtn.textContent = 'Dark Theme';
+      }
+    });
+
+    // Editor Synchronization & Line Numbering
+    function updateInputLineNumbers() {
+      const lines = codeInput.value.split('\n').length;
+      let numbersHtml = '';
+      for (let i = 1; i <= lines; i++) {
+        numbersHtml += i + '<br>';
+      }
+      inputLineNumbers.innerHTML = numbersHtml;
+    }
+
+    codeInput.addEventListener('input', updateInputLineNumbers);
+
+    // Tab key inserts 4 spaces inside textarea
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = codeInput.selectionStart;
+        const end = codeInput.selectionEnd;
+        codeInput.value = codeInput.value.substring(0, start) + "    " + codeInput.value.substring(end);
+        codeInput.selectionStart = codeInput.selectionEnd = start + 4;
+        updateInputLineNumbers();
+      } else if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        triggerAnalysis();
+      }
+    });
+
+    // File Upload Handler
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          codeInput.value = event.target.result;
+          updateInputLineNumbers();
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    // Demo Fill
+    demoBtn.addEventListener('click', () => {
+      codeInput.value = DEMO_CODE;
+      descInput.value = "find_max should return the largest number in the list";
+      updateInputLineNumbers();
+    });
+
+    // Reset Session
+    newChatBtn.addEventListener('click', () => {
+      chatContainer.innerHTML = `
+        <div class="message assistant" id="welcomeMessage">
+          <div class="message-header">
+            <span>Sentinel Assistant</span>
+          </div>
+          <div class="welcome-card">
+            <p>Welcome! I analyze Python code for security vulnerabilities using Bandit and detect logic bugs with AI.</p>
+            <p>Upload a file or paste your snippet below to generate interactive reviews and automated verified fixes.</p>
+            <button class="btn btn-secondary btn-sm" onclick="loadDemoCode()">Try a demo</button>
+          </div>
+        </div>
+      `;
+      codeInput.value = "";
+      descInput.value = "";
+      updateInputLineNumbers();
+    });
+
+    window.loadDemoCode = function() {
+      codeInput.value = DEMO_CODE;
+      descInput.value = "find_max should return the largest number in the list";
+      updateInputLineNumbers();
+    };
+
+    // Main Analysis Trigger
+    analyzeBtn.addEventListener('click', triggerAnalysis);
+
+    async function triggerAnalysis() {
+      const code = codeInput.value.trim();
+      if (!code || isProcessing) return;
+
+      currentCode = codeInput.value;
+      currentDescription = descInput.value.trim();
+
+      // Render User Code Message
+      appendUserCodeMessage(currentCode);
+      
+      // Clear input fields for next turn
+      codeInput.value = "";
+      updateInputLineNumbers();
+
+      // Show Assistant Loading State
+      const loadingEl = appendLoadingMessage("Reviewing your code...");
+      setProcessing(true);
+
+      try {
+        let data;
+        if (MOCK) {
+          await new Promise(r => setTimeout(r, 1000));
+          data = getMockAnalysisData(currentCode);
+        } else {
+          const res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: currentCode })
+          });
+          data = await res.json();
+        }
+
+        loadingEl.remove();
+        lastAnalysisResult = data;
+        appendAnalysisResultMessage(currentCode, data);
+      } catch (err) {
+        loadingEl.remove();
+        appendErrorMessage("Failed to perform code analysis. Please check network connection.");
+      } finally {
+        setProcessing(false);
+      }
+    }
+
+    // Fix Request Handler
+    async function triggerFix() {
+      if (isProcessing || !lastAnalysisResult) return;
+
+      const loadingEl = appendLoadingMessage("Writing and verifying a fix... this can take a minute");
+      setProcessing(true);
+
+      try {
+        let data;
+        if (MOCK) {
+          await new Promise(r => setTimeout(r, 1200));
+          data = getMockFixData(currentCode, currentDescription);
+        } else {
+          const res = await fetch('/api/fix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: currentCode,
+              bugs: lastAnalysisResult.bugs || [],
+              security: lastAnalysisResult.security || [],
+              description: currentDescription
+            })
+          });
+          data = await res.json();
+        }
+
+        loadingEl.remove();
+        if (data.error) { appendErrorMessage(data.error); } else if (data.no_action) { appendNoActionMessage(data); } else { appendFixResultMessage(data); }
+      } catch (err) {
+        loadingEl.remove();
+        appendErrorMessage("Failed to generate code fix. Connection timed out or server unavailable.");
+      } finally {
+        setProcessing(false);
+      }
+    }
+
+    // Append User Code Viewer Message
+    function appendUserCodeMessage(code) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message user';
+      lastUserMsgId = msgId();
+      
+      const lines = code.split('\n');
+      let lineNums = '';
+      let codeLines = '';
+
+      lines.forEach((l, idx) => {
+        lineNums += (idx + 1) + '\n';
+        codeLines += `<span class="code-line" id="line-${lastUserMsgId}-${idx + 1}">${escapeHtml(l) || ' '}</span>`;
+      });
+
+      msgDiv.innerHTML = `
+        <div class="message-header"><span>User Code</span></div>
+        <div class="code-viewer">
+          <div class="code-container">
+            <div class="line-numbers">${lineNums}</div>
+            <div class="code-content">${codeLines}</div>
+          </div>
+        </div>
+      `;
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    // Append Analysis Results Message
+    function appendAnalysisResultMessage(code, data) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message assistant';
+
+      const uniqueMsgId = lastUserMsgId;
+
+      // Render AI Bugs List
+      let bugsContent = '';
+      if (data.bugs_error) {
+        bugsContent = `<div class="error-box">${escapeHtml(data.bugs_error)}</div>`;
+      } else if (!data.bugs || data.bugs.length === 0) {
+        bugsContent = `<div class="empty-state">No bugs found</div>`;
+      } else {
+        bugsContent = `<div class="card-list">` + data.bugs.map(b => `
+          <div class="issue-card" onclick="highlightLine('${uniqueMsgId}', ${b.line})">
+            <div class="issue-card-header">
+              <span class="line-badge">Line ${b.line}</span>
+              <span class="badge badge-MEDIUM">${escapeHtml(b.type)}</span>
+            </div>
+            <div class="issue-text">${escapeHtml(b.explanation)}</div>
+            ${b.confirmed ? `<div style="margin-top: 6px;"><span class="verification-badge v-true">✓ Confirmed by ${escapeHtml(b.source || 'pylint')}</span></div>` : `<div style="margin-top: 6px;"><span class="verification-badge v-null">AI suggestion, not confirmed</span></div>`}
+            ${b.detail ? `
+            <details class="checks-details" style="margin-top: 6px;" onclick="event.stopPropagation()">
+              <summary>${b.detail.risk ? 'Why is this risky?' : 'What does this mean?'}</summary>
+              <div class="checks-list" style="font-family: var(--font-sans); font-size: 12px; gap: 6px;">
+                <div>${escapeHtml(b.detail.explanation)}</div>
+                ${b.detail.risk ? `<div><strong>Possible risk:</strong> ${escapeHtml(b.detail.risk)}</div>` : ''}
+                ${b.detail.fix ? `<div><strong>How to fix (example, not tested):</strong><pre style="margin-top: 4px; white-space: pre-wrap; font-family: var(--font-mono);">${escapeHtml(b.detail.fix)}</pre></div>` : ''}
+              </div>
+            </details>` : ''}
+          </div>
+        `).join('') + `</div>`;
+      }
+
+      // Render Security Issues List
+      let securityContent = '';
+      if (data.security_error) {
+        securityContent = `<div class="error-box">${escapeHtml(data.security_error)}</div>`;
+      } else if (!data.security || data.security.length === 0) {
+        securityContent = `<div class="empty-state">No security issues found</div>`;
+      } else {
+        securityContent = `<div class="card-list">` + data.security.map(s => `
+          <div class="issue-card" onclick="highlightLine('${uniqueMsgId}', ${s.line})">
+            <div class="issue-card-header">
+              <span class="line-badge">Line ${s.line} (${escapeHtml(s.id)})</span>
+              <span class="badge badge-${s.severity}">${escapeHtml(s.severity)}</span>
+            </div>
+            <div class="issue-text">${escapeHtml(s.issue)}</div>
+            ${s.detail ? `
+            <details class="checks-details" style="margin-top: 6px;" onclick="event.stopPropagation()">
+              <summary>${s.detail.risk ? 'Why is this risky?' : 'What does this mean?'}</summary>
+              <div class="checks-list" style="font-family: var(--font-sans); font-size: 12px; gap: 6px;">
+                <div>${escapeHtml(s.detail.explanation)}</div>
+                ${s.detail.risk ? `<div><strong>Possible risk:</strong> ${escapeHtml(s.detail.risk)}</div>` : ''}
+                ${s.detail.fix ? `<div><strong>How to fix (example, not tested):</strong><pre style="margin-top: 4px; white-space: pre-wrap; font-family: var(--font-mono);">${escapeHtml(s.detail.fix)}</pre></div>` : ''}
+              </div>
+            </details>` : ''}
+          </div>
+        `).join('') + `</div>`;
+      }
+
+      msgDiv.innerHTML = `
+        <div class="message-header"><span>Sentinel Code Analysis Results</span></div>
+        <div class="results-grid">
+          <div class="results-section">
+            <div class="section-title">Bugs (AI review)</div>
+            ${bugsContent}
+          </div>
+          <div class="results-section">
+            <div class="section-title">Security issues (Bandit)</div>
+            ${securityContent}
+          </div>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted);">AI review by ${escapeHtml(formatModels(data.models_used))}. Security scan by Bandit.</div>
+        <div style="margin-top: 12px;">
+          <button class="btn btn-primary" onclick="triggerFix()">Fix it</button>
+        </div>
+      `;
+
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    // Render Fix Output Block
+    function appendFixResultMessage(data) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message assistant';
+
+      // Verification Badge Logic
+      let vBadgeHtml = '';
+      if (data.verified === true) {
+        vBadgeHtml = `<span class="verification-badge v-true">✓ Verified: all ${(data.checks || []).length} checks passed (tries: ${data.tries || 1})</span>`;
+      } else if (data.verified === false) {
+        vBadgeHtml = `
+          <div>
+            <span class="verification-badge v-false">⚠ Could not verify</span>
+            <div style="font-size: 12px; color: var(--severity-med); margin-top: 4px;">${escapeHtml(data.verify_message || '')}</div>
+          </div>
+        `;
+      } else {
+        vBadgeHtml = `<span class="verification-badge v-null">Not verified. Describe what the code should do to verify</span>`;
+      }
+
+      // Syntax Status Chip
+      const syntaxChip = `<span class="status-chip">${escapeHtml(data.syntax_check || 'Syntax Check Passed')}</span>`;
+
+      // Checks collapsible list
+      let checksHtml = '';
+      if (data.checks && data.checks.length > 0) {
+        checksHtml = `
+          <details class="checks-details">
+            <summary>Show checks (${data.checks.length})</summary>
+            <div class="checks-list">
+              ${data.checks.map(c => `<div><code>${escapeHtml(c.call)}</code> &rarr; <code>${escapeHtml(c.expected)}</code></div>`).join('')}
+            </div>
+          </details>
+        `;
+      }
+
+      // Diff Generator
+      const diffHtml = renderSideBySideDiff(currentCode, data.fixed_code);
+
+      const fixCodeId = 'fixed-code-' + msgId();
+      const downloadLabel = data.verified === false ? 'Download (unverified)' : 'Download .py';
+
+      const innerFixContent = `
+        <div class="fix-toolbar">
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-sm" onclick="copyCode('${fixCodeId}')">Copy Code</button>
+            <button class="btn btn-sm btn-secondary" onclick="downloadCode('${fixCodeId}')">${downloadLabel}</button>
+          </div>
+        </div>
+
+        <div class="code-viewer">
+          <div class="code-container">
+            <div class="line-numbers">${data.fixed_code.split('\n').map((_, idx) => idx + 1).join('\n')}</div>
+            <div class="code-content" id="${fixCodeId}">${escapeHtml(data.fixed_code)}</div>
+          </div>
+        </div>
+
+        <details class="checks-details">
+          <summary>Show what changed</summary>
+          <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 12px;">
+            ${diffHtml}
+          </div>
+        </details>
+        ${checksHtml}
+      `;
+
+      let fixBodyHtml = '';
+      if (data.verified === false) {
+        fixBodyHtml = `
+          <details class="checks-details">
+            <summary>Show best attempt (not verified)</summary>
+            <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 12px;">
+              ${innerFixContent}
+            </div>
+          </details>
+        `;
+      } else {
+        fixBodyHtml = innerFixContent;
+      }
+
+      let remainingHtml = '';
+      if (!data.remaining || data.remaining.length === 0) {
+        remainingHtml = `<div style="margin-top: 8px;"><span class="verification-badge v-true">✓ Security scan: no remaining issues</span></div>`;
+      } else {
+        const allLow = data.remaining.every(r => String(r.severity || '').toUpperCase() === 'LOW');
+        if (allLow) {
+          remainingHtml = `
+            <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+              <div>${data.remaining.length} low-risk note(s) remain, no serious findings.</div>
+              <details class="checks-details" style="margin-top: 6px;">
+                <summary>Show notes</summary>
+                <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
+                  ${data.remaining.map(r => `<div style="font-family: var(--font-mono); font-size: 11px;">Line ${escapeHtml(String(r.line))} [${escapeHtml(String(r.id || ''))}]: ${escapeHtml(String(r.issue || ''))}</div>`).join('')}
+                </div>
+              </details>
+            </div>
+          `;
+        } else {
+          remainingHtml = `
+            <div style="margin-top: 8px; font-size: 12px;">
+              <span class="verification-badge v-false">⚠ Security scan: ${data.remaining.length} remaining issue(s)</span>
+              <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
+                ${data.remaining.map(r => `<div style="font-family: var(--font-mono); font-size: 11px; color: var(--severity-high);">Line ${escapeHtml(String(r.line))} [${escapeHtml(String(r.id || ''))}]: ${escapeHtml(String(r.issue || ''))}</div>`).join('')}
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      msgDiv.innerHTML = `
+        <div class="message-header"><span>Sentinel Automated Fix Solution</span></div>
+        <div class="fix-container">
+          <div class="fix-toolbar">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              ${syntaxChip}
+              ${vBadgeHtml}
+            </div>
+          </div>
+          ${fixBodyHtml}
+          ${remainingHtml}
+          <div style="font-size: 12px; color: var(--text-muted);">Fix written by ${escapeHtml(formatModels(data.models_used))}.</div>
+        </div>
+      `;
+
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    function appendNoActionMessage(data) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message assistant';
+      const count = (data.checks || []).length;
+      let checksHtml = '';
+      if (count > 0) {
+        checksHtml = `
+          <details class="checks-details">
+            <summary>Show checks (${count})</summary>
+            <div class="checks-list">
+              ${data.checks.map(c => `<div><code>${escapeHtml(c.call)}</code> &rarr; <code>${escapeHtml(c.expected)}</code></div>`).join('')}
+            </div>
+          </details>
+        `;
+      }
+      msgDiv.innerHTML = `
+        <div class="message-header"><span>Sentinel Verdict</span></div>
+        <div class="fix-container">
+          <div class="fix-toolbar">
+            <span class="verification-badge v-true">\u2713 No action needed</span>
+          </div>
+          <div class="issue-text">Your code passes all ${count} checks based on what you described, so nothing was changed. No confirmed errors were found. Remaining findings are low risk or only AI suggestions; review them if they matter for your use.</div>
+          ${checksHtml}
+          <div style="font-size: 12px; color: var(--text-muted);">Checks written by ${escapeHtml(formatModels(data.models_used))}.</div>
+        </div>
+      `;
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    // Generate Side by Side Diff HTML (LCS-based)
+    function renderSideBySideDiff(orig, fixed) {
+      const a = orig.replace(/\n$/, '').split('\n');
+      const b = fixed.replace(/\n$/, '').split('\n');
+      const n = a.length, m = b.length;
+
+      const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+      for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+          dp[i][j] = a[i] === b[j]
+            ? dp[i + 1][j + 1] + 1
+            : Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
+      }
+
+      const rows = [];
+      let i = 0, j = 0;
+      while (i < n && j < m) {
+        if (a[i] === b[j]) { rows.push([i, j]); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { rows.push([i, null]); i++; }
+        else { rows.push([null, j]); j++; }
+      }
+      while (i < n) { rows.push([i, null]); i++; }
+      while (j < m) { rows.push([null, j]); j++; }
+
+      const leftNums = [], rightNums = [];
+      let leftContent = '', rightContent = '';
+      rows.forEach(([li, ri]) => {
+        const l = li !== null ? a[li] : '';
+        const r = ri !== null ? b[ri] : '';
+        const leftClass = (li !== null && ri === null) ? 'diff-remove' : '';
+        const rightClass = (ri !== null && li === null) ? 'diff-add' : '';
+        leftNums.push(li !== null ? li + 1 : '');
+        rightNums.push(ri !== null ? ri + 1 : '');
+        leftContent += `<span class="code-line ${leftClass}">${escapeHtml(l) || ' '}</span>`;
+        rightContent += `<span class="code-line ${rightClass}">${escapeHtml(r) || ' '}</span>`;
+      });
+
+      return `
+        <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: -8px;">Original vs Fixed Comparison:</div>
+        <div class="side-by-side">
+          <div class="code-viewer">
+            <div class="code-container">
+              <div class="line-numbers">${leftNums.join('\n')}</div>
+              <div class="code-content">${leftContent}</div>
+            </div>
+          </div>
+          <div class="code-viewer">
+            <div class="code-container">
+              <div class="line-numbers">${rightNums.join('\n')}</div>
+              <div class="code-content">${rightContent}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Line Highlight Interaction
+    window.highlightLine = function(msgId, lineNum) {
+      const parent = chatContainer;
+      const lines = parent.querySelectorAll('.code-line');
+      lines.forEach(l => l.classList.remove('highlighted'));
+
+      const target = document.getElementById(`line-${msgId}-${lineNum}`);
+      if (target) {
+        target.classList.add('highlighted');
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+
+    // Helper Utils
+    function formatModels(list) {
+      const names = (list || []).map(m => String(m).replace(/^openai\//, ''));
+      if (names.length === 0) return 'AI';
+      if (names.length === 1) return names[0];
+      return names.join(' \u2192 ') + ' (fallback used)';
+    }
+
+    function appendLoadingMessage(text) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message assistant';
+      msgDiv.innerHTML = `
+        <div class="loading-status">
+          <div class="spinner"></div>
+          <span>${escapeHtml(text)}</span>
+        </div>
+      `;
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+      return msgDiv;
+    }
+
+    function appendErrorMessage(text) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message assistant';
+      msgDiv.innerHTML = `<div class="error-box">${escapeHtml(text)}</div>`;
+      chatContainer.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    function setProcessing(state) {
+      isProcessing = state;
+      analyzeBtn.disabled = state;
+      demoBtn.disabled = state;
+    }
+
+    function scrollToBottom() {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    let idCounter = 0;
+    function msgId() { return ++idCounter; }
+
+    window.copyCode = function(elementId) {
+      const el = document.getElementById(elementId);
+      if (el) {
+        navigator.clipboard.writeText(el.textContent);
+        alert("Code copied to clipboard!");
+      }
+    };
+
+    window.downloadCode = function(elementId) {
+      const el = document.getElementById(elementId);
+      if (el) {
+        const blob = new Blob([el.textContent], { type: 'text/x-python' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'fixed_sentinel_code.py';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    };
+
+    // Mock API Handlers
+    function getMockAnalysisData(code) {
+      return {
+        bugs: [
+          { 
+            line: 2, 
+            type: "logic", 
+            confirmed: true, 
+            source: "pylint", 
+            explanation: "Initialization of 'max_num = 0' fails when evaluating lists containing exclusively negative numbers.",
+            detail: {
+              explanation: "Initializing max_num to 0 assumes all numbers in the list are greater than or equal to zero. If every number is negative, 0 is incorrectly returned as the maximum.",
+              risk: "Silent logic failure returning incorrect maximums for negative number datasets.",
+              fix: "max_num = numbers[0]"
+            }
+          }
+        ],
+        security: [
+          { 
+            line: 10, 
+            id: "B602", 
+            severity: "HIGH", 
+            issue: "subprocess call with shell=True detected. Potential command injection risk.",
+            detail: {
+              explanation: "Passing shell=True allows execution of arbitrary shell commands if user input is unvalidated.",
+              risk: "Remote Code Execution (RCE) via command injection.",
+              fix: "subprocess.Popen(['echo', user_input])"
+            }
+          }
+        ],
+        bugs_error: null,
+        security_error: null,
+        models_used: ["openai/gpt-oss-120b"]
+      };
+    }
+
+    function getMockFixData(code, description) {
+      const fixedCode = `def find_max(numbers):\n    if not numbers:\n        return None\n    max_num = numbers[0]\n    for n in numbers:\n        if n > max_num:\n            max_num = n\n    return max_num\n\nimport subprocess\nimport shlex\ndef run_query(user_input):\n    # Replaced shell=True with safe token list\n    subprocess.Popen(["echo", user_input])\n`;
+
+      if (description.toLowerCase().includes("fail")) {
+        return {
+          fixed_code: fixedCode,
+          syntax_check: "syntax OK",
+          verified: false,
+          verify_message: "Assertion Error: find_max([-5, -2]) returned 0 instead of -2",
+          tries: 3,
+          checks: [
+            { call: "find_max([1, 5, 3])", expected: "5" },
+            { call: "find_max([-5, -2])", expected: "-2" }
+          ],
+          remaining: [
+            { line: 12, id: "B101", severity: "LOW", issue: "Use of assert detected." }
+          ],
+          error: null,
+          models_used: ["openai/gpt-oss-120b"]
+        };
+      } else if (description.trim().length > 0) {
+        return {
+          fixed_code: fixedCode,
+          syntax_check: "syntax OK",
+          verified: true,
+          verify_message: "All checks passed successfully",
+          tries: 1,
+          checks: [
+            { call: "find_max([1, 5, 3])", expected: "5" },
+            { call: "find_max([-10, -5])", expected: "-5" }
+          ],
+          remaining: [],
+          error: null,
+          models_used: ["openai/gpt-oss-120b"]
+        };
+      } else {
+        return {
+          fixed_code: fixedCode,
+          syntax_check: "syntax OK",
+          verified: null,
+          verify_message: null,
+          tries: 1,
+          checks: [],
+          remaining: [],
+          error: null,
+          models_used: ["openai/gpt-oss-120b"]
+        };
+      }
+    }
+  </script>
+</body>
+</html>
