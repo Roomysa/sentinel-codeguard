@@ -70,9 +70,11 @@ def _run_local(folder, script, args, timeout, stdin_text):
             "returncode": r.returncode, "timed_out": False, "sandboxed": False}
 
 
-def run_script(files, script, args=(), timeout=30, stdin_text=None):
+def run_script(files, script, args=(), timeout=30, stdin_text=None,
+               require_sandbox=False):
     """Write files to a temp folder and run `python script args`.
-    Runs inside Docker when possible, otherwise in a plain subprocess."""
+    Runs inside Docker when possible. Without Docker it falls back to a plain
+    subprocess, unless require_sandbox is True (then nothing is run at all)."""
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
         for name, text in files.items():
             with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
@@ -81,6 +83,10 @@ def run_script(files, script, args=(), timeout=30, stdin_text=None):
         if docker_available():
             out = _run_docker(folder, script, list(args), timeout, stdin_text)
         if out is None:
+            if require_sandbox:
+                _state.sandboxed = False
+                return {"stdout": "", "stderr": "", "returncode": None,
+                        "timed_out": False, "sandboxed": False, "blocked": True}
             out = _run_local(folder, script, list(args), timeout, stdin_text)
     _state.sandboxed = out["sandboxed"]
     return out
