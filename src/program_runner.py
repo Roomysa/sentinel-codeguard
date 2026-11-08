@@ -1,6 +1,11 @@
+import ast
 import re
+import sys
 
 from src import sandbox
+
+STDLIB = set(sys.stdlib_module_names)
+SANDBOX_PACKAGES = set()  # extra packages baked into the sandbox image (none yet)
 
 # Errors that mean "the sandbox blocked it", not "your code is buggy"
 SANDBOX_LIMIT = {
@@ -14,12 +19,48 @@ CERTAIN = {"NameError", "UnboundLocalError", "SyntaxError", "IndentationError",
            "TabError"}
 
 
+def missing_modules(code):
+    """Imported modules that are not in the standard library (so not in the sandbox)."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:
+                names.add(node.module.split(".")[0])
+    return sorted(n for n in names
+                  if n not in STDLIB and n not in SANDBOX_PACKAGES and n != "__future__")
+
+
+def missing_message(mods):
+    names = ", ".join(mods)
+    return (f"Your code uses {names}, which is not available in the sandbox "
+            "(no internet, limited packages). Static checks ran; "
+            "the program itself was not executed.")
+
+
 def run_program(code, stdin_text="", timeout=15):
+    result = {"status": "", "exc_type": "", "line": None, "message": "",
+              "certain": False, "stdout": "", "stderr": "", "sandboxed": False,
+              "missing": []}
+
+    missing = missing_modules(code)
+    if missing:
+        result["status"] = "missing_packages"
+        result["message"] = missing_message(missing)
+        result["missing"] = missing
+        return result
+
     out = sandbox.run_script({"main.py": code}, "main.py", timeout=timeout,
                              stdin_text=stdin_text, require_sandbox=True)
-    result = {"status": "", "exc_type": "", "line": None, "message": "",
-              "certain": False, "stdout": out["stdout"][:4000],
-              "stderr": out["stderr"][-1500:], "sandboxed": out["sandboxed"]}
+    result["stdout"] = out["stdout"][:4000]
+    result["stderr"] = out["stderr"][-1500:]
+    result["sandboxed"] = out["sandboxed"]
 
     if out.get("blocked"):
         result["status"] = "no_sandbox"
