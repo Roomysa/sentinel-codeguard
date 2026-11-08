@@ -3,6 +3,7 @@ import ast
 from src.check_generator import generate_checks, run_checks
 from src.fixer import FIX_PROMPT, clean_code
 from src.llm_client import ask_llm
+from src.program_runner import missing_message, missing_modules
 from src.security_scanner import scan_security
 from src.static_analyzer import pylint_errors
 
@@ -137,16 +138,20 @@ def remaining_findings(code):
 def fix_and_verify(code, bugs, issues, description="", provider=None, max_tries=3):
     result = {"fixed_code": None, "syntax_check": "", "verified": None,
               "verify_message": "", "tries": 0, "checks": [], "remaining": [],
-              "no_action": False, "error": None}
+              "missing_modules": [], "no_action": False, "error": None}
     description = (description or "").strip()
     requirement = description or "none given"
     confirmed = confirmed_lines(bugs)
     serious = security_lines(issues)
     original_has_builtin = bool(builtin_feedback(code))
+    missing = missing_modules(code)
 
     checks = None
     problems = None
-    if description:
+    if missing:
+        result["missing_modules"] = missing
+        result["verify_message"] = missing_message(missing)
+    elif description:
         checks = generate_checks(code, description, provider=provider)
         if checks:
             result["checks"] = checks
