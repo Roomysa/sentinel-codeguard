@@ -1,9 +1,6 @@
 import json
-import os
-import subprocess
-import sys
-import tempfile
 
+from src import sandbox
 from src.llm_client import ask_llm
 
 FENCE = "`" * 3
@@ -75,41 +72,34 @@ def generate_checks(code, description, provider=None):
 
 
 def run_checks(code, checks, timeout=30):
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        paths = {n: os.path.join(tmp, n) for n in ("target.py", "checks.json", "runner.py")}
-        with open(paths["target.py"], "w", encoding="utf-8") as f:
-            f.write(code)
-        with open(paths["checks.json"], "w", encoding="utf-8") as f:
-            json.dump(checks, f)
-        with open(paths["runner.py"], "w", encoding="utf-8") as f:
-            f.write(RUNNER)
-        try:
-            result = subprocess.run(
-                [sys.executable, paths["runner.py"], paths["target.py"], paths["checks.json"]],
-                cwd=tmp, capture_output=True, text=True, encoding="utf-8",
-                errors="replace", stdin=subprocess.DEVNULL, timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
-            return {"passed": False, "results": [],
-                    "message": f"timeout after {timeout}s (possible infinite loop)"}
+    out = sandbox.run_script(
+        {"target.py": code, "checks.json": json.dumps(checks), "runner.py": RUNNER},
+        "runner.py", ["target.py", "checks.json"], timeout=timeout)
+    box = out["sandboxed"]
 
+    if out["timed_out"]:
+        return {"passed": False, "results": [], "sandboxed": box,
+                "message": f"timeout after {timeout}s (possible infinite loop)"}
     try:
-        data = json.loads(result.stdout.strip().splitlines()[-1])
+        data = json.loads(out["stdout"].strip().splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
-        return {"passed": False, "results": [],
-                "message": "could not run checks: " + result.stderr[-300:]}
+        return {"passed": False, "results": [], "sandboxed": box,
+                "message": "could not run checks: " + out["stderr"][-300:]}
     if "load_error" in data:
-        return {"passed": False, "results": [],
+        return {"passed": False, "results": [], "sandboxed": box,
                 "message": "code failed to load: " + data["load_error"]}
 
     results = data["results"]
     failed = [r for r in results if not r["passed"]]
     if failed:
         lines = [f"{r['call']} returned {r['actual']}, expected {r['expected']}" for r in failed]
-        return {"passed": False, "results": results, "message": "\n".join(lines)}
+        return {"passed": False, "results": results, "sandboxed": box,
+                "message": "\n".join(lines)}
     if not results:
-        return {"passed": False, "results": [], "message": "no checks to run"}
-    return {"passed": True, "results": results, "message": "all checks passed"}
+        return {"passed": False, "results": [], "sandboxed": box,
+                "message": "no checks to run"}
+    return {"passed": True, "results": results, "sandboxed": box,
+            "message": "all checks passed"}
 
 
 def make_checks(code, description, provider=None):
