@@ -20,8 +20,8 @@ def add_line_numbers(code):
     return "\n".join(f"{i}: {line}" for i, line in enumerate(lines, start=1))
 
 
-def find_bugs(code, provider=None, hints=""):
-    prompt = PROMPT_TEMPLATE.format(hints=hints, code=add_line_numbers(code))
+def find_bugs(code, provider=None, hints="", context=""):
+    prompt = PROMPT_TEMPLATE.format(hints=hints + context, code=add_line_numbers(code))
     reply = ask_llm(prompt, provider=provider).strip()
     reply = reply.removeprefix(FENCE + "json").removeprefix(FENCE).removesuffix(FENCE).strip()
     try:
