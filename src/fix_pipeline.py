@@ -201,7 +201,8 @@ def fix_and_verify(code, bugs, issues, description="", provider=None, max_tries=
     if problems is None:
         problems = "\n".join(bug_lines(bugs) + serious)
     if not problems:
-        result["error"] = "nothing to fix"
+        result.update(fixed_code=code, syntax_check="syntax OK", no_action=True,
+                      verify_message="no problems were found")
         return result
 
     prompt = FIX_PROMPT.format(problems=problems, code=code, requirement=requirement)
