@@ -1405,6 +1405,10 @@
         sandboxChipHtml = `<span class="status-chip" style="background-color: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border-color);">Checked without sandbox</span>`;
       }
 
+      const issueTextContent = count > 0 
+        ? `Your code passes all ${count} checks based on what you described, so nothing was changed. No confirmed errors were found. Remaining findings are low risk or only AI suggestions; review them if they matter for your use.`
+        : `Your code is already working: no problems were found, so there is nothing to change.`;
+
       msgDiv.innerHTML = `
         <div class="message-header"><span>Sentinel Verdict</span></div>
         <div class="fix-container">
@@ -1412,7 +1416,7 @@
             <span class="verification-badge v-true">\u2713 No action needed</span>
             ${sandboxChipHtml}
           </div>
-          <div class="issue-text">Your code passes all ${count} checks based on what you described, so nothing was changed. No confirmed errors were found. Remaining findings are low risk or only AI suggestions; review them if they matter for your use.</div>
+          <div class="issue-text">${issueTextContent}</div>
           ${checksHtml}
           <div style="font-size: 12px; color: var(--text-muted);">Checks written by ${escapeHtml(formatModels(data.models_used))}.</div>
         </div>
