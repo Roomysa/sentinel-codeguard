@@ -701,10 +701,22 @@
         ></textarea>
       </div>
 
+      <div id="projectContainer" style="display: none; flex-direction: column; gap: 8px;">
+        <div id="projectError" class="error-box" style="display: none;"></div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;" id="projectChips"></div>
+        <div style="display: flex; align-items: center; gap: 12px; font-size: 13px;">
+          <label style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
+            Main file:
+            <select id="mainSelect" class="desc-input" style="width: auto; padding: 4px 8px;"></select>
+          </label>
+          <button class="btn btn-sm" id="clearFilesBtn">Clear files</button>
+        </div>
+      </div>
+
       <div class="controls-row">
         <div class="btn btn-sm file-upload-btn">
           <span>Upload .py</span>
-          <input type="file" id="fileInput" accept=".py">
+          <input type="file" id="fileInput" accept=".py" multiple>
         </div>
 
         <input 
@@ -724,7 +736,7 @@
 
   <!-- Global Footer -->
   <footer>
-    AI can make mistakes. Review all results.
+    AI can make mistakes. Review all results. Code is sent to AI providers, so do not paste secrets or confidential code.
   </footer>
 
   <script>
@@ -740,6 +752,9 @@
     let lastAnalysisResult = null;
     let isProcessing = false;
     let lastUserMsgId = 0;
+    let projectFiles = [];
+    let isProjectMode = false;
+    let currentMain = null;
 
     // DOM References
     const chatContainer = document.getElementById('chatContainer');
@@ -751,6 +766,11 @@
     const fileInput = document.getElementById('fileInput');
     const themeToggleBtn = document.getElementById('themeToggleBtn');
     const newChatBtn = document.getElementById('newChatBtn');
+    const projectContainer = document.getElementById('projectContainer');
+    const projectChips = document.getElementById('projectChips');
+    const mainSelect = document.getElementById('mainSelect');
+    const clearFilesBtn = document.getElementById('clearFilesBtn');
+    const projectError = document.getElementById('projectError');
 
     // Theme Management
     themeToggleBtn.addEventListener('click', () => {
@@ -791,18 +811,124 @@
       }
     });
 
-    // File Upload Handler
+    // File Upload Handler (Multiple Files / Project Mode)
     fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+
+      if (files.length > 10) {
+        showProjectError("Maximum 10 files allowed.");
+        fileInput.value = "";
+        return;
+      }
+      let totalSize = files.reduce((acc, f) => acc + f.size, 0);
+      if (totalSize > 200 * 1024) {
+        showProjectError("Total file size exceeds 200 KB limit.");
+        fileInput.value = "";
+        return;
+      }
+
+      hideProjectError();
+
+      if (files.length === 1) {
+        projectFiles = [];
+        updateProjectUI();
         const reader = new FileReader();
         reader.onload = (event) => {
           codeInput.value = event.target.result;
           updateInputLineNumbers();
         };
-        reader.readAsText(file);
+        reader.readAsText(files[0]);
+        fileInput.value = "";
+      } else {
+        let loadedCount = 0;
+        const newProjectFiles = [];
+        files.forEach((file) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            newProjectFiles.push({ name: file.name, code: event.target.result });
+            loadedCount++;
+            if (loadedCount === files.length) {
+              projectFiles = newProjectFiles;
+              updateProjectUI();
+            }
+          };
+          reader.readAsText(file);
+        });
+        fileInput.value = "";
       }
     });
+
+    function showProjectError(msg) {
+      if (projectError) {
+        projectError.textContent = msg;
+        projectError.style.display = 'block';
+      }
+    }
+    function hideProjectError() {
+      if (projectError) {
+        projectError.style.display = 'none';
+        projectError.textContent = '';
+      }
+    }
+
+    function updateProjectUI() {
+      if (projectFiles.length >= 2) {
+        codeInput.disabled = true;
+        codeInput.placeholder = `Project mode: ${projectFiles.length} files selected`;
+        codeInput.value = "";
+        updateInputLineNumbers();
+        if (projectContainer) projectContainer.style.display = 'flex';
+
+        if (projectChips) {
+          projectChips.innerHTML = projectFiles.map((f, idx) => `
+            <span class="badge" style="background-color: var(--bg-tertiary); color: var(--text-main); border: 1px solid var(--border-color); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 12px; text-transform: none;">
+              ${escapeHtml(f.name)}
+              <span style="cursor: pointer; font-weight: bold; color: var(--severity-high);" onclick="removeProjectFile(${idx})">&times;</span>
+            </span>
+          `).join('');
+        }
+
+        if (mainSelect) {
+          const currentMainVal = mainSelect.value;
+          mainSelect.innerHTML = projectFiles.map(f => `<option value="${escapeHtml(f.name)}">${escapeHtml(f.name)}</option>`).join('');
+          const hasMainPy = projectFiles.some(f => f.name === 'main.py');
+          if (projectFiles.some(f => f.name === currentMainVal)) {
+            mainSelect.value = currentMainVal;
+          } else if (hasMainPy) {
+            mainSelect.value = 'main.py';
+          } else {
+            mainSelect.value = projectFiles[0].name;
+          }
+        }
+      } else {
+        codeInput.disabled = false;
+        codeInput.placeholder = "# Paste Python code here or upload a .py file...";
+        if (projectContainer) projectContainer.style.display = 'none';
+        if (projectFiles.length === 1) {
+          codeInput.value = projectFiles[0].code;
+          updateInputLineNumbers();
+          projectFiles = [];
+        }
+      }
+    }
+
+    window.removeProjectFile = function(idx) {
+      projectFiles.splice(idx, 1);
+      updateProjectUI();
+    };
+
+    if (clearFilesBtn) {
+      clearFilesBtn.addEventListener('click', () => {
+        projectFiles = [];
+        codeInput.disabled = false;
+        codeInput.placeholder = "# Paste Python code here or upload a .py file...";
+        codeInput.value = "";
+        updateInputLineNumbers();
+        if (projectContainer) projectContainer.style.display = 'none';
+        hideProjectError();
+      });
+    }
 
     // Demo Fill
     demoBtn.addEventListener('click', () => {
@@ -827,6 +953,12 @@
       `;
       codeInput.value = "";
       descInput.value = "";
+      projectFiles = [];
+      isProjectMode = false;
+      currentMain = null;
+      if (projectContainer) projectContainer.style.display = 'none';
+      codeInput.disabled = false;
+      hideProjectError();
       updateInputLineNumbers();
     });
 
@@ -840,18 +972,46 @@
     analyzeBtn.addEventListener('click', triggerAnalysis);
 
     async function triggerAnalysis() {
-      const code = codeInput.value.trim();
-      if (!code || isProcessing) return;
+      const desc = descInput.value.trim();
+      let payload = {};
+      let displayCode = "";
 
-      currentCode = codeInput.value;
-      currentDescription = descInput.value.trim();
+      if (projectFiles.length >= 2) {
+        isProjectMode = true;
+        const mainFileName = mainSelect ? mainSelect.value : (projectFiles.find(f => f.name === 'main.py') ? 'main.py' : projectFiles[0].name);
+        const mainFileObj = projectFiles.find(f => f.name === mainFileName) || projectFiles[0];
+        displayCode = mainFileObj.code;
+        currentCode = displayCode;
+        currentDescription = desc;
+        currentMain = mainFileObj.name;
+
+        payload = {
+          files: projectFiles,
+          main: currentMain,
+          description: currentDescription
+        };
+      } else {
+        const code = codeInput.value.trim();
+        if (!code || isProcessing) return;
+        isProjectMode = false;
+        currentMain = null;
+        displayCode = code;
+        currentCode = code;
+        currentDescription = desc;
+
+        payload = {
+          code: currentCode,
+          description: currentDescription
+        };
+      }
 
       // Render User Code Message
-      appendUserCodeMessage(currentCode);
+      appendUserCodeMessage(displayCode, isProjectMode ? projectFiles : null, currentMain);
       
-      // Clear input fields for next turn
-      codeInput.value = "";
-      updateInputLineNumbers();
+      if (!isProjectMode) {
+        codeInput.value = "";
+        updateInputLineNumbers();
+      }
 
       // Show Assistant Loading State
       const loadingEl = appendLoadingMessage("Reviewing your code...");
@@ -866,14 +1026,14 @@
           const res = await fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: currentCode })
+            body: JSON.stringify(payload)
           });
           data = await res.json();
         }
 
         loadingEl.remove();
         lastAnalysisResult = data;
-        appendAnalysisResultMessage(currentCode, data);
+        appendAnalysisResultMessage(displayCode, data);
       } catch (err) {
         loadingEl.remove();
         appendErrorMessage("Failed to perform code analysis. Please check network connection.");
@@ -889,6 +1049,19 @@
       const loadingEl = appendLoadingMessage("Writing and verifying a fix... this can take a minute");
       setProcessing(true);
 
+      let payload = {
+        bugs: lastAnalysisResult.bugs || [],
+        security: lastAnalysisResult.security || [],
+        description: currentDescription
+      };
+
+      if (isProjectMode && projectFiles.length >= 2) {
+        payload.files = projectFiles;
+        payload.main = currentMain || (mainSelect ? mainSelect.value : 'main.py');
+      } else {
+        payload.code = currentCode;
+      }
+
       try {
         let data;
         if (MOCK) {
@@ -898,12 +1071,7 @@
           const res = await fetch('/api/fix', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              code: currentCode,
-              bugs: lastAnalysisResult.bugs || [],
-              security: lastAnalysisResult.security || [],
-              description: currentDescription
-            })
+            body: JSON.stringify(payload)
           });
           data = await res.json();
         }
@@ -919,7 +1087,7 @@
     }
 
     // Append User Code Viewer Message
-    function appendUserCodeMessage(code) {
+    function appendUserCodeMessage(code, files, main) {
       const msgDiv = document.createElement('div');
       msgDiv.className = 'message user';
       lastUserMsgId = msgId();
@@ -933,14 +1101,25 @@
         codeLines += `<span class="code-line" id="line-${lastUserMsgId}-${idx + 1}">${escapeHtml(l) || ' '}</span>`;
       });
 
+      let headerText = "User Code";
+      let alsoAnalyzedHtml = "";
+      if (files && files.length > 0 && main) {
+        headerText = `User Code (${main})`;
+        const otherFileNames = files.map(f => f.name).filter(n => n !== main);
+        if (otherFileNames.length > 0) {
+          alsoAnalyzedHtml = `<div style="font-size: 12px; color: var(--text-muted);">Also analyzed: ${escapeHtml(otherFileNames.join(', '))}</div>`;
+        }
+      }
+
       msgDiv.innerHTML = `
-        <div class="message-header"><span>User Code</span></div>
+        <div class="message-header"><span>${escapeHtml(headerText)}</span></div>
         <div class="code-viewer">
           <div class="code-container">
             <div class="line-numbers">${lineNums}</div>
             <div class="code-content">${codeLines}</div>
           </div>
         </div>
+        ${alsoAnalyzedHtml}
       `;
       chatContainer.appendChild(msgDiv);
       scrollToBottom();
@@ -952,6 +1131,7 @@
       msgDiv.className = 'message assistant';
 
       const uniqueMsgId = lastUserMsgId;
+      const responseMain = data.main || currentMain;
 
       // Render AI Bugs List
       let bugsContent = '';
@@ -960,10 +1140,14 @@
       } else if (!data.bugs || data.bugs.length === 0) {
         bugsContent = `<div class="empty-state">No bugs found</div>`;
       } else {
-        bugsContent = `<div class="card-list">` + data.bugs.map(b => `
-          <div class="issue-card" onclick="highlightLine('${uniqueMsgId}', ${b.line})">
+        bugsContent = `<div class="card-list">` + data.bugs.map(b => {
+          const isMain = !b.file || b.file === responseMain || !responseMain;
+          const lineBadgeText = isMain ? `Line ${b.line}` : `${escapeHtml(b.file)} · Line ${b.line}`;
+          const cardOnClick = isMain ? `onclick="highlightLine('${uniqueMsgId}', ${b.line})"` : '';
+          return `
+          <div class="issue-card" ${cardOnClick}>
             <div class="issue-card-header">
-              <span class="line-badge">Line ${b.line}</span>
+              <span class="line-badge">${lineBadgeText}</span>
               <span class="badge badge-MEDIUM">${escapeHtml(b.type)}</span>
             </div>
             <div class="issue-text">${escapeHtml(b.explanation)}</div>
@@ -978,7 +1162,8 @@
               </div>
             </details>` : ''}
           </div>
-        `).join('') + `</div>`;
+        `;
+        }).join('') + `</div>`;
       }
 
       // Render Security Issues List
@@ -988,10 +1173,14 @@
       } else if (!data.security || data.security.length === 0) {
         securityContent = `<div class="empty-state">No security issues found</div>`;
       } else {
-        securityContent = `<div class="card-list">` + data.security.map(s => `
-          <div class="issue-card" onclick="highlightLine('${uniqueMsgId}', ${s.line})">
+        securityContent = `<div class="card-list">` + data.security.map(s => {
+          const isMain = !s.file || s.file === responseMain || !responseMain;
+          const lineBadgeText = isMain ? `Line ${s.line} (${escapeHtml(s.id)})` : `${escapeHtml(s.file)} · Line ${s.line} (${escapeHtml(s.id)})`;
+          const cardOnClick = isMain ? `onclick="highlightLine('${uniqueMsgId}', ${s.line})"` : '';
+          return `
+          <div class="issue-card" ${cardOnClick}>
             <div class="issue-card-header">
-              <span class="line-badge">Line ${s.line} (${escapeHtml(s.id)})</span>
+              <span class="line-badge">${lineBadgeText}</span>
               <span class="badge badge-${s.severity}">${escapeHtml(s.severity)}</span>
             </div>
             <div class="issue-text">${escapeHtml(s.issue)}</div>
@@ -1005,7 +1194,8 @@
               </div>
             </details>` : ''}
           </div>
-        `).join('') + `</div>`;
+        `;
+        }).join('') + `</div>`;
       }
 
       msgDiv.innerHTML = `
@@ -1035,9 +1225,25 @@
       const msgDiv = document.createElement('div');
       msgDiv.className = 'message assistant';
 
+      // Sandbox Chip Logic
+      let sandboxChipHtml = '';
+      if (data.sandboxed === true) {
+        sandboxChipHtml = `<span class="status-chip" style="background-color: var(--status-success-bg); color: var(--status-success); border: 1px solid var(--status-success);">Checked in sandbox</span>`;
+      } else if (data.sandboxed === false) {
+        sandboxChipHtml = `<span class="status-chip" style="background-color: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border-color);">Checked without sandbox</span>`;
+      }
+
       // Verification Badge Logic
       let vBadgeHtml = '';
-      if (data.verified === true) {
+      if (data.missing_modules && data.missing_modules.length > 0) {
+        const xList = data.missing_modules.join(', ');
+        vBadgeHtml = `
+          <div>
+            <span class="verification-badge v-null">Not verified: uses ${escapeHtml(xList)}, not available in the sandbox</span>
+            ${data.verify_message ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${escapeHtml(data.verify_message)}</div>` : ''}
+          </div>
+        `;
+      } else if (data.verified === true) {
         vBadgeHtml = `<span class="verification-badge v-true">✓ Verified: all ${(data.checks || []).length} checks passed (tries: ${data.tries || 1})</span>`;
       } else if (data.verified === false) {
         vBadgeHtml = `
@@ -1071,12 +1277,13 @@
 
       const fixCodeId = 'fixed-code-' + msgId();
       const downloadLabel = data.verified === false ? 'Download (unverified)' : 'Download .py';
+      const mainFileName = data.main || currentMain;
 
       const innerFixContent = `
         <div class="fix-toolbar">
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-sm" onclick="copyCode('${fixCodeId}')">Copy Code</button>
-            <button class="btn btn-sm btn-secondary" onclick="downloadCode('${fixCodeId}')">${downloadLabel}</button>
+            <button class="btn btn-sm btn-secondary" onclick="downloadCode('${fixCodeId}', ${mainFileName ? `'` + escapeHtml(mainFileName) + `'` : 'null'})">${downloadLabel}</button>
           </div>
         </div>
 
@@ -1110,12 +1317,34 @@
         fixBodyHtml = innerFixContent;
       }
 
+      let projectInfoHtml = '';
+      if (isProjectMode && mainFileName) {
+        projectInfoHtml += `<div style="font-size: 12px; color: var(--text-muted);">Only ${escapeHtml(mainFileName)} was fixed.</div>`;
+        if (data.other_files && data.other_files.length > 0) {
+          projectInfoHtml += `<div style="font-size: 12px; color: var(--text-muted);">Not fixed (other files):<br>` + data.other_files.map(line => `&nbsp;&nbsp;${escapeHtml(line)}`).join('<br>') + `</div>`;
+        }
+      }
+
       let remainingHtml = '';
       if (!data.remaining || data.remaining.length === 0) {
-        remainingHtml = `<div style="margin-top: 8px;"><span class="verification-badge v-true">✓ Security scan: no remaining issues</span></div>`;
+        remainingHtml = `<div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">Security rescan after the fix: no findings.</div>`;
       } else {
+        const hasHighOrMed = data.remaining.some(r => {
+          const sev = String(r.severity || '').toUpperCase();
+          return sev === 'HIGH' || sev === 'MEDIUM';
+        });
         const allLow = data.remaining.every(r => String(r.severity || '').toUpperCase() === 'LOW');
-        if (allLow) {
+
+        if (hasHighOrMed) {
+          remainingHtml = `
+            <div style="margin-top: 8px; font-size: 12px;">
+              <span class="verification-badge v-false">⚠ Security scan: ${data.remaining.length} remaining issue(s)</span>
+              <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
+                ${data.remaining.map(r => `<div style="font-family: var(--font-mono); font-size: 11px; color: var(--severity-high);">Line ${escapeHtml(String(r.line))} [${escapeHtml(String(r.id || ''))}]: ${escapeHtml(String(r.issue || ''))}</div>`).join('')}
+              </div>
+            </div>
+          `;
+        } else if (allLow) {
           remainingHtml = `
             <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
               <div>${data.remaining.length} low-risk note(s) remain, no serious findings.</div>
@@ -1128,14 +1357,7 @@
             </div>
           `;
         } else {
-          remainingHtml = `
-            <div style="margin-top: 8px; font-size: 12px;">
-              <span class="verification-badge v-false">⚠ Security scan: ${data.remaining.length} remaining issue(s)</span>
-              <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
-                ${data.remaining.map(r => `<div style="font-family: var(--font-mono); font-size: 11px; color: var(--severity-high);">Line ${escapeHtml(String(r.line))} [${escapeHtml(String(r.id || ''))}]: ${escapeHtml(String(r.issue || ''))}</div>`).join('')}
-              </div>
-            </div>
-          `;
+          remainingHtml = `<div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">Security rescan after the fix: no findings.</div>`;
         }
       }
 
@@ -1146,8 +1368,10 @@
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
               ${syntaxChip}
               ${vBadgeHtml}
+              ${sandboxChipHtml}
             </div>
           </div>
+          ${projectInfoHtml}
           ${fixBodyHtml}
           ${remainingHtml}
           <div style="font-size: 12px; color: var(--text-muted);">Fix written by ${escapeHtml(formatModels(data.models_used))}.</div>
@@ -1173,11 +1397,20 @@
           </details>
         `;
       }
+
+      let sandboxChipHtml = '';
+      if (data.sandboxed === true) {
+        sandboxChipHtml = `<span class="status-chip" style="background-color: var(--status-success-bg); color: var(--status-success); border: 1px solid var(--status-success);">Checked in sandbox</span>`;
+      } else if (data.sandboxed === false) {
+        sandboxChipHtml = `<span class="status-chip" style="background-color: var(--bg-tertiary); color: var(--text-muted); border: 1px solid var(--border-color);">Checked without sandbox</span>`;
+      }
+
       msgDiv.innerHTML = `
         <div class="message-header"><span>Sentinel Verdict</span></div>
         <div class="fix-container">
           <div class="fix-toolbar">
             <span class="verification-badge v-true">\u2713 No action needed</span>
+            ${sandboxChipHtml}
           </div>
           <div class="issue-text">Your code passes all ${count} checks based on what you described, so nothing was changed. No confirmed errors were found. Remaining findings are low risk or only AI suggestions; review them if they matter for your use.</div>
           ${checksHtml}
@@ -1318,14 +1551,14 @@
       }
     };
 
-    window.downloadCode = function(elementId) {
+    window.downloadCode = function(elementId, mainFileName) {
       const el = document.getElementById(elementId);
       if (el) {
         const blob = new Blob([el.textContent], { type: 'text/x-python' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'fixed_sentinel_code.py';
+        a.download = mainFileName ? ('fixed_' + mainFileName) : 'fixed_sentinel_code.py';
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -1334,6 +1567,8 @@
     // Mock API Handlers
     function getMockAnalysisData(code) {
       return {
+        main: isProjectMode ? (mainSelect ? mainSelect.value : 'main.py') : null,
+        files: isProjectMode ? projectFiles.map(f => f.name) : [],
         bugs: [
           { 
             line: 2, 
@@ -1377,6 +1612,10 @@
           verified: false,
           verify_message: "Assertion Error: find_max([-5, -2]) returned 0 instead of -2",
           tries: 3,
+          sandboxed: true,
+          missing_modules: [],
+          other_files: isProjectMode ? ["utils.py (unchanged)"] : [],
+          main: isProjectMode ? (mainSelect ? mainSelect.value : 'main.py') : null,
           checks: [
             { call: "find_max([1, 5, 3])", expected: "5" },
             { call: "find_max([-5, -2])", expected: "-2" }
@@ -1394,6 +1633,10 @@
           verified: true,
           verify_message: "All checks passed successfully",
           tries: 1,
+          sandboxed: true,
+          missing_modules: [],
+          other_files: isProjectMode ? ["utils.py (unchanged)"] : [],
+          main: isProjectMode ? (mainSelect ? mainSelect.value : 'main.py') : null,
           checks: [
             { call: "find_max([1, 5, 3])", expected: "5" },
             { call: "find_max([-10, -5])", expected: "-5" }
@@ -1409,6 +1652,10 @@
           verified: null,
           verify_message: null,
           tries: 1,
+          sandboxed: false,
+          missing_modules: [],
+          other_files: isProjectMode ? ["utils.py (unchanged)"] : [],
+          main: isProjectMode ? (mainSelect ? mainSelect.value : 'main.py') : null,
           checks: [],
           remaining: [],
           error: null,
