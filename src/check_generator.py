@@ -11,7 +11,7 @@ The user says the code should do this:
 
 Code:
 {code}
-
+{context}
 Write 3 to 5 small checks that test what the user described.
 Reply ONLY with a JSON list. No extra text.
 Each item must have: "call" (a Python expression that calls a function from the code) and "expected" (a Python expression for the correct result).
@@ -55,8 +55,8 @@ print(json.dumps({"results": results}))
 '''
 
 
-def generate_checks(code, description, provider=None):
-    prompt = CHECK_PROMPT.format(description=description, code=code)
+def generate_checks(code, description, provider=None, context=""):
+    prompt = CHECK_PROMPT.format(description=description, code=code, context=context)
     reply = ask_llm(prompt, provider=provider).strip()
     reply = reply.removeprefix(FENCE + "json").removeprefix(FENCE).removesuffix(FENCE).strip()
     try:
@@ -71,10 +71,12 @@ def generate_checks(code, description, provider=None):
     return checks
 
 
-def run_checks(code, checks, timeout=30):
-    out = sandbox.run_script(
-        {"target.py": code, "checks.json": json.dumps(checks), "runner.py": RUNNER},
-        "runner.py", ["target.py", "checks.json"], timeout=timeout)
+def run_checks(code, checks, timeout=30, extra_files=None):
+    files = dict(extra_files or {})
+    files.update({"target.py": code, "checks.json": json.dumps(checks),
+                  "runner.py": RUNNER})
+    out = sandbox.run_script(files, "runner.py", ["target.py", "checks.json"],
+                             timeout=timeout)
     box = out["sandboxed"]
 
     if out["timed_out"]:
