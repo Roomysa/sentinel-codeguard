@@ -3,9 +3,9 @@ import ast
 from src.check_generator import generate_checks, run_checks
 from src.fixer import FIX_PROMPT, clean_code
 from src.llm_client import ask_llm
-from src.program_runner import missing_message, missing_modules
+from src.program_runner import missing_message, missing_modules, summarize_others
 from src.security_scanner import scan_security
-from src.static_analyzer import pylint_errors
+from src.static_analyzer import pylint_errors, pylint_errors_project
 
 RETRY_PROMPT = """You are a Python expert.
 Your previous fix did not work.
@@ -113,9 +113,13 @@ def security_lines(issues):
     return [f"- Line {i.get('line')}: {i.get('issue')}" for i in serious_issues(issues)]
 
 
-def pylint_feedback(code):
+def pylint_feedback(code, others=None, main="main.py"):
     try:
-        errors = pylint_errors(code)
+        if others:
+            errors = [e for e in pylint_errors_project({**others, main: code})
+                      if e["file"] == main]
+        else:
+            errors = pylint_errors(code)
     except Exception:
         return ""
     if not errors:
@@ -135,16 +139,37 @@ def remaining_findings(code):
             for i in found if i.get("id") != "error"]
 
 
-def fix_and_verify(code, bugs, issues, description="", provider=None, max_tries=3):
+def _in_main(item, main):
+    return item.get("file") in (None, "", main)
+
+
+def fix_and_verify(code, bugs, issues, description="", provider=None, max_tries=3,
+                   files=None, main="main.py"):
+    project = dict(files or {})
+    others = {n: t for n, t in project.items() if n != main}
+    context = summarize_others(project, main) if others else ""
+
+    # Only the main file is fixed. Findings in other files are reported, not fixed.
+    notes = []
+    for b in bugs:
+        if not _in_main(b, main) and b.get("confirmed"):
+            notes.append(f"{b.get('file')}, line {b.get('line')}: {b.get('explanation')}")
+    for i in serious_issues(issues):
+        if not _in_main(i, main):
+            notes.append(f"{i.get('file')}, line {i.get('line')}: {i.get('issue')}")
+    bugs = [b for b in bugs if _in_main(b, main)]
+    issues = [i for i in issues if _in_main(i, main)]
+
     result = {"fixed_code": None, "syntax_check": "", "verified": None,
               "verify_message": "", "tries": 0, "checks": [], "remaining": [],
-              "missing_modules": [], "no_action": False, "error": None}
+              "missing_modules": [], "other_files": notes, "sandboxed": None,
+              "no_action": False, "error": None}
     description = (description or "").strip()
     requirement = description or "none given"
     confirmed = confirmed_lines(bugs)
     serious = security_lines(issues)
     original_has_builtin = bool(builtin_feedback(code))
-    missing = missing_modules(code)
+    missing = missing_modules(code, list(others))
 
     checks = None
     problems = None
@@ -152,10 +177,11 @@ def fix_and_verify(code, bugs, issues, description="", provider=None, max_tries=
         result["missing_modules"] = missing
         result["verify_message"] = missing_message(missing)
     elif description:
-        checks = generate_checks(code, description, provider=provider)
+        checks = generate_checks(code, description, provider=provider, context=context)
         if checks:
             result["checks"] = checks
-            before = run_checks(code, checks)
+            before = run_checks(code, checks, extra_files=others)
+            result["sandboxed"] = before.get("sandboxed")
             if before["passed"]:
                 if not confirmed and not serious:
                     result.update(fixed_code=code, syntax_check="syntax OK",
@@ -196,7 +222,7 @@ def fix_and_verify(code, bugs, issues, description="", provider=None, max_tries=
             serious_left = [r for r in result["remaining"] if r["severity"] in SERIOUS]
             removed = gutted(code, fixed)
             builtin = "" if original_has_builtin else builtin_feedback(fixed)
-            lint = pylint_feedback(fixed)
+            lint = pylint_feedback(fixed, others, main)
             if removed:
                 feedback = ("The fix removed or stubbed out what these functions do: "
                             + ", ".join(removed)
@@ -213,7 +239,8 @@ def fix_and_verify(code, bugs, issues, description="", provider=None, max_tries=
             if not feedback:
                 if not checks:
                     return result
-                outcome = run_checks(fixed, checks)
+                outcome = run_checks(fixed, checks, extra_files=others)
+                result["sandboxed"] = outcome.get("sandboxed")
                 if outcome["passed"]:
                     result["verified"] = True
                     result["verify_message"] = "all checks passed"
