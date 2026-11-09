@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -59,6 +60,51 @@ def pylint_errors(code):
                 "line": int(m.get("line") or 0),
                 "id": m.get("message-id", ""),
                 "symbol": m.get("symbol", ""),
+                "issue": m.get("message", ""),
+            })
+    return errors
+
+
+def pylint_errors_project(files):
+    """files: {name: code}. Lints every file together so that local imports
+    resolve. Returns confirmed crash errors, each with a 'file' key."""
+    local = {n[:-3] for n in files if n.endswith(".py")}
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+        paths = []
+        for name, text in files.items():
+            path = os.path.join(folder, name)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            paths.append(path)
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pylint", "--disable=all", "--enable=E,F",
+                 "--output-format=json", *paths],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=90, cwd=folder,
+            )
+        except subprocess.TimeoutExpired:
+            return []
+    if "No module named" in result.stderr:
+        raise RuntimeError("pylint is not installed")
+    try:
+        items = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return []
+
+    errors = []
+    for m in items:
+        symbol = m.get("symbol")
+        keep = symbol in KEEP
+        if symbol == "no-name-in-module":
+            found = re.search(r"in module '([^']+)'", m.get("message", ""))
+            keep = bool(found) and found.group(1).split(".")[0] in local
+        if keep:
+            errors.append({
+                "file": os.path.basename(m.get("path", "")),
+                "line": int(m.get("line") or 0),
+                "id": m.get("message-id", ""),
+                "symbol": symbol,
                 "issue": m.get("message", ""),
             })
     return errors
